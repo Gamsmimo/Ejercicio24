@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stories 24h</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #fafafa;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 935px;
+            margin: 0 auto;
+        }
+
+        .stories-container {
+            background: white;
+            border: 1px solid #dbdbdb;
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 24px;
+            overflow-x: auto;
+            white-space: nowrap;
+        }
+
+        .stories-list {
+            display: inline-flex;
+            gap: 16px;
+        }
+
+        .story-item {
+            display: inline-block;
+            text-align: center;
+            cursor: pointer;
+        }
+
+        .story-avatar {
+            width: 66px;
+            height: 66px;
+            border-radius: 50%;
+            background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%);
+            padding: 3px;
+            margin-bottom: 8px;
+        }
+
+        .story-image {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid white;
+        }
+
+        .add-story {
+            width: 66px;
+            height: 66px;
+            border-radius: 50%;
+            background: #fafafa;
+            border: 2px dashed #dbdbdb;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 32px;
+            color: #262626;
+            transition: all 0.3s;
+        }
+
+        .add-story:hover {
+            background: #f0f0f0;
+        }
+
+        .story-label {
+            font-size: 12px;
+            color: #262626;
+            max-width: 66px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active {
+            display: flex;
+        }
+
+        .modal-content {
+            position: relative;
+            max-width: 500px;
+            width: 90%;
+            height: 90vh;
+            max-height: 888px;
+        }
+
+        .modal-image {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            border-radius: 8px;
+        }
+
+        .modal-close {
+            position: absolute;
+            top: -40px;
+            right: 0;
+            color: white;
+            font-size: 32px;
+            cursor: pointer;
+            background: none;
+            border: none;
+        }
+
+        .modal-nav {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            background: rgba(255, 255, 255, 0.3);
+            border: none;
+            color: white;
+            font-size: 24px;
+            padding: 16px;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+
+        .modal-nav.prev {
+            left: -60px;
+        }
+
+        .modal-nav.next {
+            right: -60px;
+        }
+
+        .modal-nav:hover {
+            background: rgba(255, 255, 255, 0.5);
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        @media (max-width: 768px) {
+            .stories-container {
+                padding: 12px;
+            }
+
+            .modal-nav {
+                display: none;
+            }
+
+            .modal-content {
+                width: 95%;
+                height: 80vh;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="stories-container">
+            <div class="stories-list" id="storiesList">
+                <div class="story-item">
+                    <div class="add-story" id="addStoryBtn">+</div>
+                    <div class="story-label">Tu story</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="fileInput" accept="image/*">
+
+    <div class="modal" id="storyModal">
+        <div class="modal-content">
+            <button class="modal-close" id="closeModal">&times;</button>
+            <button class="modal-nav prev" id="prevStory">&lt;</button>
+            <img class="modal-image" id="modalImage" src="" alt="Story">
+            <button class="modal-nav next" id="nextStory">&gt;</button>
+        </div>
+    </div>
+
+    <script>
+        const storiesList = document.getElementById('storiesList');
+        const addStoryBtn = document.getElementById('addStoryBtn');
+        const fileInput = document.getElementById('fileInput');
+        const storyModal = document.getElementById('storyModal');
+        const modalImage = document.getElementById('modalImage');
+        const closeModal = document.getElementById('closeModal');
+        const prevStory = document.getElementById('prevStory');
+        const nextStory = document.getElementById('nextStory');
+
+        let stories = [];
+        let currentStoryIndex = 0;
+
+        function loadStories() {
+            const stored = localStorage.getItem('stories');
+            if (stored) {
+                stories = JSON.parse(stored);
+                removeExpiredStories();
+            }
+            renderStories();
+        }
+
+        function removeExpiredStories() {
+            const now = Date.now();
+            stories = stories.filter(story => {
+                const timePassed = now - story.timestamp;
+                return timePassed < 24 * 60 * 60 * 1000;
+            });
+            saveStories();
+        }
+
+        function saveStories() {
+            localStorage.setItem('stories', JSON.stringify(stories));
+        }
+
+        function renderStories() {
+            const existingStories = storiesList.querySelectorAll('.story-item:not(:first-child)');
+            existingStories.forEach(item => item.remove());
+
+            stories.forEach((story, index) => {
+                const storyItem = document.createElement('div');
+                storyItem.className = 'story-item';
+                storyItem.innerHTML = `
+                    <div class="story-avatar">
+                        <img class="story-image" src="${story.image}" alt="Story ${index + 1}">
+                    </div>
+                    <div class="story-label">Story ${index + 1}</div>
+                `;
+                storyItem.addEventListener('click', () => openStory(index));
+                storiesList.appendChild(storyItem);
+            });
+        }
+
+        function openStory(index) {
+            currentStoryIndex = index;
+            modalImage.src = stories[index].image;
+            storyModal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeStoryModal() {
+            storyModal.classList.remove('active');
+            document.body.style.overflow = 'auto';
+        }
+
+        function showPrevStory() {
+            if (currentStoryIndex > 0) {
+                currentStoryIndex--;
+                modalImage.src = stories[currentStoryIndex].image;
+            }
+        }
+
+        function showNextStory() {
+            if (currentStoryIndex < stories.length - 1) {
+                currentStoryIndex++;
+                modalImage.src = stories[currentStoryIndex].image;
+            }
+        }
+
+        addStoryBtn.addEventListener('click', () => {
+            fileInput.click();
+        });
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let width = img.width;
+                    let height = img.height;
+
+                    if (width > 1080 || height > 1920) {
+                        const ratio = Math.min(1080 / width, 1920 / height);
+                        width = width * ratio;
+                        height = height * ratio;
+                    }
+
+                    canvas.width = width;
+                    canvas.height = height;
+
+                    const ctx = canvas.getContext('2d');
+                    ctx.drawImage(img, 0, 0, width, height);
+
+                    const base64 = canvas.toDataURL('image/jpeg', 0.9);
+
+                    const story = {
+                        image: base64,
+                        timestamp: Date.now()
+                    };
+
+                    stories.push(story);
+                    saveStories();
+                    renderStories();
+                };
+                img.src = event.target.result;
+            };
+            reader.readAsDataURL(file);
+            fileInput.value = '';
+        });
+
+        closeModal.addEventListener('click', closeStoryModal);
+
+        storyModal.addEventListener('click', (e) => {
+            if (e.target === storyModal) {
+                closeStoryModal();
+            }
+        });
+
+        prevStory.addEventListener('click', showPrevStory);
+        nextStory.addEventListener('click', showNextStory);
+
+        let touchStartX = 0;
+        let touchEndX = 0;
+
+        storyModal.addEventListener('touchstart', (e) => {
+            touchStartX = e.changedTouches[0].screenX;
+        });
+
+        storyModal.addEventListener('touchend', (e) => {
+            touchEndX = e.changedTouches[0].screenX;
+            handleSwipe();
+        });
+
+        function handleSwipe() {
+            if (touchEndX < touchStartX - 50) {
+                showNextStory();
+            }
+            if (touchEndX > touchStartX + 50) {
+                showPrevStory();
+            }
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (!storyModal.classList.contains('active')) return;
+
+            if (e.key === 'Escape') {
+                closeStoryModal();
+            } else if (e.key === 'ArrowLeft') {
+                showPrevStory();
+            } else if (e.key === 'ArrowRight') {
+                showNextStory();
+            }
+        });
+
+        loadStories();
+        setInterval(removeExpiredStories, 60000);
+    </script>
+</body>
+
+</html>
